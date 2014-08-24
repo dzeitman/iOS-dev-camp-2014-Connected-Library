@@ -1,21 +1,38 @@
-// These values may be different for your servo
-const SERVO_MIN = 0.010;
-const SERVO_MAX = 0.04;
- 
-// create global variable for servo and configure
-servo <- hardware.pin7;
-servo.configure(PWM_OUT, 0.05, SERVO_MIN);
+// Constant values
+const SERVO_UNLOCK = 0.0320; // Duty cycle (0.0 - 1.0) for unlock state
+const SERVO_DOLOCK = 0.0135; // Duty cycle (0.0 - 1.0) for locked state
+const SERVO_PERIOD = 0.05; // Servo period in seconds
 
-function setLatch(value) {
-    if (value != 0 && value != 1) {
-        server.log("Incorrect latch value [" + value + "]");
+// Global variable for pins
+doorInput <- hardware.pin8;
+servo <- hardware.pin7;
+
+// Callback from agent to change the duty cycle
+function setValue(value) {
+    if (value < 0 || value > 1) {
+        server.log("Incorrect range: " + value);
         return;
     }
-
-    local scaled = value * (SERVO_MAX - SERVO_MIN) + SERVO_MIN;
-    servo.write(scaled);
-    server.log("Latch is " + value);
+    
+    servo.write(value);
+    //server.log("Duty cycle: " + value);
 }
 
-// register a handler for "latch" messages from the agent
-agent.on("latch", setLatch);
+// Callback when input changed then update the state in the agent.
+function doorChangedHandler() {
+    local value = doorInput.read();
+    agent.send("door", value);
+    //server.log("Door state: " + value);
+}
+
+// Setup door sensor as pull-up input (HI = 1, LO = 0)
+doorInput.configure(DIGITAL_IN_PULLUP, doorChangedHandler);
+
+// Setup servo output as PWM at 20Hz at SERVO_DOLOCK duty cycle
+servo.configure(PWM_OUT, SERVO_PERIOD, SERVO_DOLOCK);
+
+// Register for callback from agent event
+agent.on("cycle", setValue);
+
+// Output version ensuring the device is running
+server.log("v140824-1246");

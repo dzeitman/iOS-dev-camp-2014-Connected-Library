@@ -1,31 +1,77 @@
-// Log the URLs we need
-server.log("Turn latch On: " + http.agenturl() + "?latch=1");
-server.log("Turn latch Off: " + http.agenturl() + "?latch=0");
- 
-function requestHandler(request, response) {
-    try {
-        // check if the user sent latch as a query parameter
-        if ("latch" in request.query) {
-            local param = request.query.latch;
-            if (param == "1" || param == "0") {
-                // convert the query parameter to an integer
-                local state = param.tointeger();
-                 
-                // send "latch" message to device
-                device.send("latch", state);
-            } else {
-                response.send(400, "Only support `0` and `1`.");
-            }
-        } else {
-            response.send(400, "Only support `latch` query.");
-        }
+// Constant values
+const SERVO_UNLOCK = 0.0320; // Duty cycle (0.0 - 1.0) for unlock state
+const SERVO_DOLOCK = 0.0135; // Duty cycle (0.0 - 1.0) for locked state
+const SERVO_PERIOD = 0.05; // Servo period in seconds
 
-        // send a response back saying everything was OK.
-        response.send(200, "OK");
+// Device initial state
+isLock <- true;
+isOpen <- false;
+dutyCycle <- SERVO_DOLOCK;
+
+// Print out help message to server log
+function printHelp() {
+    local baseAddress = http.agenturl();
+    server.log("How to control:");
+    server.log("GET " + baseAddress + "?lock");
+    server.log("GET " + baseAddress + "?unlock");
+    server.log("GET " + baseAddress + "?state");
+}
+
+// Construct device state known to the agent in JSON string
+function getState() {
+    return "{\"isLock\":" + isLock
+        + ",\"isOpen\":" + isOpen
+        + ",\"_debug\":{"
+            + "\"dutyCycle\":" + dutyCycle
+            + ",\"period\":" + SERVO_PERIOD
+        + "}"
+    + "}";
+}
+
+// Callback from device to change door state
+function setDoorState(state) {
+    isOpen = state == 1 ? true : false;
+}
+
+// Callback to process HTTP request
+function requestHandler(request, response) {
+    // Set content type to JSON :D
+    response.header("Content-Type", "application/json");
+    
+    try {
+        // Try to process the query
+        if ("lock" in request.query) {
+            isLock = true;
+            dutyCycle = SERVO_DOLOCK;
+
+            device.send("cycle", dutyCycle);
+            response.send(200, getState());
+        } else if ("unlock" in request.query) {
+            isLock = false;
+            dutyCycle = SERVO_UNLOCK;
+
+            device.send("cycle", dutyCycle);
+            response.send(200, getState());
+        } else if ("force" in request.query) {
+            dutyCycle = value;
+
+            device.send("cycle", dutyCycle);
+            response.send(200, getState());
+        } else if ("state" in request.query) {
+            response.send(200, getState());
+        } else {
+            response.send(400, "{\"error\":\"UNKNOWN_COMMAND\"}");
+        }
     } catch (ex) {
-        response.send(500, "Internal Server Error: " + ex);
+        response.send(500, "{\"error\":\"SERVER_ERROR\",\"exception\":\"" + ex + "\"}");
     }
 }
- 
-// register the HTTP handler
+
+// Register for callback from device event
+device.on("door", setDoorState);
+
+// Register for HTTP handler
 http.onrequest(requestHandler);
+
+// Output help message for HTTP end-points
+printHelp();
