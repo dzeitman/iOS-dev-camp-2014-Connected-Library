@@ -1,0 +1,31 @@
+// Log the URLs we need
+server.log("Turn latch On: " + http.agenturl() + "?latch=1");
+server.log("Turn latch Off: " + http.agenturl() + "?latch=0");
+ 
+function requestHandler(request, response) {
+    try {
+        // check if the user sent latch as a query parameter
+        if ("latch" in request.query) {
+            local param = request.query.latch;
+            if (param == "1" || param == "0") {
+                // convert the query parameter to an integer
+                local state = param.tointeger();
+                 
+                // send "latch" message to device
+                device.send("latch", state);
+            } else {
+                response.send(400, "Only support `0` and `1`.");
+            }
+        } else {
+            response.send(400, "Only support `latch` query.");
+        }
+
+        // send a response back saying everything was OK.
+        response.send(200, "OK");
+    } catch (ex) {
+        response.send(500, "Internal Server Error: " + ex);
+    }
+}
+ 
+// register the HTTP handler
+http.onrequest(requestHandler);
